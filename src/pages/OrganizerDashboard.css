@@ -1,0 +1,181 @@
+/* Reset cơ bản */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  color: #000;
+}
+
+body,
+html {
+  height: 100%;
+  font-family: Arial, sans-serif;
+}
+
+/* Container tổng */
+.dashboard-container {
+  display: flex;
+  width: 100vw;
+  min-height: 100vh;
+  background-color: #f0f0f0;
+}
+
+/* Sidebar */
+.sidebar {
+  min-width: 200px;
+  background-color: #fff;
+  border-right: 1px solid #ddd;
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header h2 {
+  font-size: 1.5vw;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-nav li {
+  margin: 5px 0;
+}
+
+.sidebar-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  font-size: 1vw;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 12px;
+}
+
+.sidebar-link .icon {
+  margin-right: 10px;
+  font-size: 1.2vw;
+}
+
+.sidebar-link .label {
+  flex-grow: 1;
+  text-align: left;
+}
+
+.sidebar-link .arrow {
+  font-size: 0.8vw;
+  color: #6b7280;
+}
+
+.sidebar-link:hover {
+  background-color: #f3f4f6;
+}
+
+.sidebar-link.active {
+  background-color: #f3f4f6;
+  color: #059669;
+  font-weight: bold;
+}
+
+.sidebar-link.active .arrow {
+  color: #059669;
+}
+
+.sidebar-link.active .icon {
+  color: #059669;
+}
+
+/* Main Content */
+.main-content {
+  width: 80%;
+  padding: 2%;
+}
+
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 1%;
+  margin-bottom: 2%;
+}
+
+.main-header h1 {
+  font-size: 2vw;
+}
+
+.header-search {
+  display: flex;
+  width: 40%;
+}
+
+.header-search input {
+  width: 80%;
+  padding: 1%;
+  border: 1px solid #ccc;
+  background-color: #eee;
+  border-radius: 4px 0 0 4px;
+  outline: none;
+}
+
+.search-button {
+  width: 20%;
+  padding: 1%;
+  border: 1px solid #ccc;
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  background-color: #eee;
+  cursor: pointer;
+}
+
+/* Chart Section */
+.chart-section {
+  margin-bottom: 2%;
+}
+
+.chart-card {
+  background-color: #fff;
+  padding: 2%;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  height: 30vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Info Cards */
+.info-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2%;
+}
+
+.info-section .card {
+  background-color: #fff;
+  flex: 1;
+  min-width: 200px;
+  padding: 2%;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  padding: 1%;
+  font-size: 1vw;
+  color: #777;
+  border-top: 1px solid #ddd;
+}

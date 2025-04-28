@@ -6,6 +6,7 @@ import { useLocation } from "react-router-dom";
 import Overview from "../component/Overview";
 import Events from "../component/Events";
 import Locations from "../component/Locations";
+import PastEvents from "../component/PastEvents";
 
 function OrganizerDashboard() {
   const location = useLocation();
@@ -38,6 +39,12 @@ function OrganizerDashboard() {
               <button onClick={() => handleSectionChange("events")} className="sidebar-link">
                 <span className="icon">📅</span>
                 <span>Events</span>
+              </button>
+            </li>
+            <li>
+              <button onClick={() => handleSectionChange("past")} className="sidebar-link">
+                <span className="icon">📍</span>
+                <span>Past Events</span>
               </button>
             </li>
             <li>
@@ -74,11 +81,9 @@ function OrganizerDashboard() {
         {/* Render các component tùy theo section */}
         {selectedSection === "overview" && <Overview />}
         {selectedSection === "events" && <Events />}
+        {selectedSection === "past" && <PastEvents />}
         {selectedSection === "locations" && <Locations />}
 
-        <footer className="dashboard-footer">
-          <p>© 2021 Themesberg, LLC. All rights reserved.</p>
-        </footer>
       </main>
     </div>
   );

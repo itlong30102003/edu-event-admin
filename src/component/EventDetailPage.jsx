@@ -175,11 +175,8 @@ function EventDetailPage() {
 
   const generateQRData = () => {
     if (!event.coordinates) return '';
-    return JSON.stringify({
-      eventId: event.id,
-      lat: event.coordinates.lat,
-      lng: event.coordinates.lng
-    });
+    const { lat, lng } = event.coordinates;
+    return `${event.id}:${lat}:${lng}`;
   };
 
   // Map style configuration
@@ -465,7 +462,7 @@ function EventDetailPage() {
                       color: 'red',
                       opacity: 0.5
                     }}
-                    radius={20}
+                    radius={50}
                   />
                 </MapContainer>
               ) : (

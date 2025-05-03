@@ -177,40 +177,47 @@
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
+.modal-body textarea {
+  font-family: inherit;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.modal-body textarea:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
 /* Benefit section */
-.benefit-section {
-  margin: 10px 0;
-  border: 1px solid #eee;
+.benefit-section, .guest-section {
+  margin: 20px 0;
   padding: 15px;
-  border-radius: 6px;
-  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 5px;
 }
 
-.benefit-inputs {
+.benefits-list, .guests-list {
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 5px;
+  min-height: 100px;
+}
+
+.benefit-inputs, .guest-inputs {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-bottom: 10px;
 }
 
-.benefit-inputs input {
-  flex: 1;
-}
-
-.benefits-list {
-  margin-top: 15px;
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-.benefit-item {
+.benefit-item, .guest-item {
+  margin: 5px 0;
+  padding: 5px;
+  background: white;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #f0f0f0;
-  padding: 8px 12px;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  color: #333;
 }
 
 /* Button styling */

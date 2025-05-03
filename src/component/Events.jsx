@@ -10,6 +10,10 @@ import 'leaflet/dist/leaflet.css';
 import './Events.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { library } from '@fortawesome/fontawesome-svg-core';
+import { fas } from '@fortawesome/free-solid-svg-icons';
+import { far } from '@fortawesome/free-regular-svg-icons';
 
 // Fix the default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -18,6 +22,9 @@ L.Icon.Default.mergeOptions({
     iconUrl: icon,
     shadowUrl: iconShadow
 });
+
+// Add Font Awesome icons to library
+library.add(fas, far);
 
 function Events() {
   const [events, setEvents] = useState([]);
@@ -37,7 +44,6 @@ function Events() {
       avatar: "",
     },
     location: "",
-    quantity: "",
     quantitymax: "",
     time: "",
     videoUrl: "", // Changed from trailerId
@@ -52,6 +58,7 @@ function Events() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
+  const storage = getStorage();
 
   useEffect(() => {
     fetchEvents();
@@ -72,17 +79,18 @@ function Events() {
   };
 
   const handleAddBenefit = () => {
-    if (!benefitText || !benefitIcon) return;
+    if (!benefitText || !selectedIcon) return;
     
     setNewEvent((prevData) => ({
       ...prevData,
       benefits: [
         ...prevData.benefits,
-        { icon: benefitIcon, text: benefitText },
+        { icon: selectedIcon, text: benefitText },
       ],
     }));
     setBenefitText('');
     setBenefitIcon('');
+    setSelectedIcon('');
   };
 
   const handleAddGuest = () => {
@@ -111,6 +119,8 @@ function Events() {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [position, setPosition] = useState([10.980671753776012, 106.67452525297074]); // TDMU coordinates
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
 
   // Add this constant for map container style
   const mapStyle = {
@@ -149,35 +159,41 @@ function Events() {
     if (!query) return;
     
     try {
-      // Use Nominatim API to search for the location
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          query + ', Thu Dau Mot, Binh Duong, Vietnam'
-        )}&limit=1`
+        `https://nominatim.openstreetmap.org/search?` + 
+        new URLSearchParams({
+          q: query,
+          format: 'json',
+          addressdetails: 1,
+          limit: 1,
+          countrycodes: 'vn'
+        })
       );
+      
       const data = await response.json();
       
       if (data && data.length > 0) {
         const location = data[0];
         const lat = parseFloat(location.lat);
         const lng = parseFloat(location.lon);
+        const address = location.display_name;
         
-        // Update the selected location
-        setSelectedLocation({
-          address: location.display_name,
+        // Update selected location with proper coordinate format
+        const locationData = {
+          address: address,
           coordinates: { lat, lng }
-        });
+        };
         
-        // Update the map position
+        setSelectedLocation(locationData);
         setPosition([lat, lng]);
         
-        // Update the event location
+        // Update event location with the full address
         setNewEvent(prev => ({
           ...prev,
-          location: location.display_name
+          location: address,
+          coordinates: { lat, lng } // Add coordinates to newEvent state
         }));
         
-        // Clear the search query
         setSearchQuery('');
       } else {
         alert('Location not found. Please try a different search term.');
@@ -195,33 +211,36 @@ function Events() {
     }
   };
 
-  // Modify the existing handleAddEvent function
+  // Modify the handleAddEvent function
   const handleAddEvent = async () => {
-    if (!newEvent.title || !newEvent.time || !selectedLocation) {
-      alert("Please enter all required information including location!");
+    if (!newEvent.title || !selectedDate || !selectedTimeSlot || !selectedLocation) {
+      alert("Please fill in all required fields: title, date, time slot, and location!");
       return;
     }
 
-    const eventData = {
-      title: newEvent.title,
-      about: newEvent.about,
-      category: newEvent.category,
-      host: newEvent.host,
-      images: newEvent.images, // Use the images array instead of single image
-      organizer: newEvent.organizer,
-      location: selectedLocation.address,
-      coordinates: selectedLocation.coordinates,
-      quantity: newEvent.quantity,
-      quantitymax: newEvent.quantitymax,
-      time: Timestamp.fromDate(new Date(newEvent.time)),
-      videoUrl: newEvent.videoUrl, // Changed from trailerId
-      benefits: newEvent.benefits,
-      guests: newEvent.guests,
-    };
+    try {
+      // Create a date object with the selected date and time slot
+      const [year, month, day] = selectedDate.split('-');
+      const [hours, minutes, seconds] = timeSlots[selectedTimeSlot].split(':');
+      const eventDateTime = new Date(year, month - 1, day, hours, minutes, seconds);
 
-    await addDoc(collection(db, "event"), eventData);
-    resetModalStates();
-    fetchEvents();
+      const eventData = {
+        ...newEvent,
+        time: Timestamp.fromDate(eventDateTime),
+        timeSlot: selectedTimeSlot,
+        coordinates: {  // Add coordinates from selectedLocation
+          lat: selectedLocation.coordinates.lat,
+          lng: selectedLocation.coordinates.lng
+        }
+      };
+
+      await addDoc(collection(db, "event"), eventData);
+      resetModalStates();
+      fetchEvents();
+    } catch (error) {
+      console.error("Error adding event:", error);
+      alert('Error adding event. Please try again.');
+    }
   };
 
   // Modify the resetModalStates function
@@ -238,7 +257,6 @@ function Events() {
         avatar: "",
       },
       location: "",
-      quantity: "",
       quantitymax: "",
       time: "",
       videoUrl: "",
@@ -255,10 +273,152 @@ function Events() {
     setIsModalOpen(false);
     setSelectedLocation(null);
     setSearchQuery("");
+    setSelectedIcon('');
+    setIsIconPickerOpen(false);
+    setSelectedTimeSlot('');
+    setSelectedDate('');
   };
 
   const handleEventClick = (eventId) => {
     navigate(`/event/${eventId}`);
+  };
+
+  // Styles for scrollable lists
+  const scrollableListStyle = {
+    maxHeight: '200px',
+    overflowY: 'auto',
+    padding: '10px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    marginBottom: '10px'
+  };
+
+  // Add this helper function after other function declarations
+  const uploadImage = async (file) => {
+    if (!file) return null;
+    
+    try {
+      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      return downloadURL;
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      throw error;
+    }
+  };
+
+  // Replace the event image upload handler
+  const handleEventImageUpload = async (file) => {
+    try {
+      const imageUrl = await uploadImage(file);
+      setNewEvent(prev => ({
+        ...prev,
+        images: [...prev.images, imageUrl]
+      }));
+    } catch (error) {
+      alert('Failed to upload image. Please try again.');
+    }
+  };
+
+  // Replace the organizer avatar upload handler
+  const handleOrganizerAvatarUpload = async (file) => {
+    try {
+      const imageUrl = await uploadImage(file);
+      setNewEvent(prev => ({
+        ...prev,
+        organizer: {
+          ...prev.organizer,
+          avatar: imageUrl
+        }
+      }));
+    } catch (error) {
+      alert('Failed to upload organizer avatar. Please try again.');
+    }
+  };
+
+  // Replace the guest image upload handler
+  const handleGuestImageUpload = async (file) => {
+    try {
+      const imageUrl = await uploadImage(file);
+      setGuestPicture(imageUrl);
+      setIsGuestImageLocal(false); // Reset to URL mode after upload
+    } catch (error) {
+      alert('Failed to upload guest image. Please try again.');
+    }
+  };
+
+  // Add these state variables after other useState declarations
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const [selectedIcon, setSelectedIcon] = useState('');
+
+  // Add this array of common Font Awesome icons
+  const commonIcons = [
+    'heart', 'star', 'check', 'gift', 'trophy', 'medal', 'certificate', 
+    'graduation-cap', 'book', 'laptop', 'coffee', 'lightbulb', 'smile',
+    'clock', 'calendar', 'user-graduate', 'award', 'crown', 'gem',
+    'shield-alt', 'thumbs-up', 'comments', 'hand-holding-heart'
+  ];
+
+  // Add these helper functions for video handling
+  const getVideoEmbedUrl = (url) => {
+    if (!url) return null;
+    
+    // YouTube URL patterns
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const youtubeMatch = url.match(youtubeRegex);
+    
+    // Facebook Video URL pattern
+    const facebookRegex = /facebook.com\/[^/]+\/videos\/(\d+)/;
+    const facebookMatch = url.match(facebookRegex);
+    
+    // Google Drive URL pattern
+    const driveRegex = /drive\.google\.com\/file\/d\/([^/]+)/;
+    const driveMatch = url.match(driveRegex);
+    
+    if (youtubeMatch) {
+      return `https://www.youtube.com/embed/${youtubeMatch[1]}`;
+    } else if (facebookMatch) {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=0`;
+    } else if (driveMatch) {
+      return `https://drive.google.com/file/d/${driveMatch[1]}/preview`;
+    }
+    
+    return url; // Return original URL if no patterns match
+  };
+
+  // Add this VideoPreview component
+  const VideoPreview = ({ url }) => {
+    const embedUrl = getVideoEmbedUrl(url);
+    
+    if (!embedUrl) return null;
+    
+    return (
+      <div className="video-preview" style={{
+        marginTop: '10px',
+        width: '100%',
+        aspectRatio: '16/9',
+        borderRadius: '4px',
+        overflow: 'hidden',
+        border: '1px solid #ddd'
+      }}>
+        <iframe
+          src={embedUrl}
+          width="100%"
+          height="100%"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title="Video Preview"
+        />
+      </div>
+    );
+  };
+
+  // Add after other state declarations
+  const timeSlots = {
+    morning: '07:00:00',
+    afternoon: '12:30:00'
   };
 
   return (
@@ -311,8 +471,24 @@ function Events() {
                 placeholder="Event Title"
                 value={newEvent.title}
                 onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                style={{ height: '100px', marginTop:20,fontSize: '1.5rem', fontWeight: 'bold' }}
               />
               <div className="image-section">
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <button 
+                    onClick={() => setIsLocalImage(!isLocalImage)}
+                    style={{
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      background: isLocalImage ? '#e6e6e6' : '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {isLocalImage ? 'Enter URL Instead' : 'Upload Image'}
+                  </button>
+                </div>
+
                 <div className="image-inputs">
                   {isLocalImage ? (
                     <input
@@ -321,14 +497,7 @@ function Events() {
                       onChange={(e) => {
                         const file = e.target.files[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setNewEvent(prev => ({
-                              ...prev,
-                              images: [...prev.images, reader.result]
-                            }));
-                          };
-                          reader.readAsDataURL(file);
+                          handleEventImageUpload(file);
                         }
                       }}
                     />
@@ -336,36 +505,20 @@ function Events() {
                     <input
                       type="text"
                       placeholder="Image URL"
-                      value={newEvent.imageInput || ''}
-                      onChange={(e) => setNewEvent(prev => ({
-                        ...prev,
-                        imageInput: e.target.value
-                      }))}
-                    />
-                  )}
-                </div>
-                <div className="image-actions">
-                  <button 
-                    className="toggle-image-button" 
-                    onClick={() => setIsLocalImage(!isLocalImage)}
-                  >
-                    {isLocalImage ? 'Image URL' : 'Picture'}
-                  </button>
-                  <button 
-                    className="add-image-button"
-                    onClick={() => {
-                      if (isLocalImage) return; // For local files, we add directly on file select
-                      if (newEvent.imageInput) {
+                      onChange={(e) => {
                         setNewEvent(prev => ({
                           ...prev,
-                          images: [...prev.images, prev.imageInput],
-                          imageInput: ''
+                          images: [...prev.images, e.target.value]
                         }));
-                      }
-                    }}
-                  >
-                    Add Picture
-                  </button>
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd'
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="images-list">
                   {newEvent.images.map((img, index) => (
@@ -381,11 +534,22 @@ function Events() {
                   ))}
                 </div>
               </div>
-              <input
-                type="text"
+              <textarea
                 placeholder="About"
                 value={newEvent.about}
                 onChange={(e) => setNewEvent({ ...newEvent, about: e.target.value })}
+                style={{
+                  width: '100%',
+                  minHeight: '100px',
+                  padding: '12px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  fontSize: '1rem',
+                  backgroundColor: '#fff',
+                  color: '#333'
+                }}
               />
               <input
                 type="text"
@@ -393,99 +557,152 @@ function Events() {
                 value={newEvent.category}
                 onChange={(e) => setNewEvent({ ...newEvent, category: e.target.value })}
               />
-              <input
-                type="text"
-                placeholder="Host"
-                value={newEvent.host}
-                onChange={(e) => setNewEvent({ ...newEvent, host: e.target.value })}
-              />
-              
-              <h4>Event Information</h4>
-              <input
-                type="text"
-                placeholder="Organizer Name"
-                value={newEvent.organizer.name}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, name: e.target.value } })
-                }
-              />
-              <input
-                type="text"
-                placeholder="Organizer Field"
-                value={newEvent.organizer.field}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, field: e.target.value } })
-                }
-              />
-              <div className="organizer-avatar-section">
-                <label>Organizer Avatar</label>
-                <div className="image-inputs">
-                  {isOrganizerAvatarLocal ? (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setNewEvent(prev => ({
-                              ...prev,
-                              organizer: {
-                                ...prev.organizer,
-                                avatar: reader.result
-                              }
-                            }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
+
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                <div className="organizer-avatar-section" style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  width: '300px',
+                  margin: '0 auto'
+                }}>
+                  <label>Organizer Avatar</label>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                    <button 
+                      onClick={() => setIsOrganizerAvatarLocal(!isOrganizerAvatarLocal)}
+                      style={{
+                        padding: '8px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        background: isOrganizerAvatarLocal ? '#e6e6e6' : '#fff',
+                        cursor: 'pointer'
                       }}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      placeholder="Organizer Avatar URL"
-                      value={newEvent.organizer.avatar}
-                      onChange={(e) =>
-                        setNewEvent(prev => ({
+                    >
+                      {isOrganizerAvatarLocal ? 'Enter URL Instead' : 'Upload Image'}
+                    </button>
+                  </div>
+
+                  <div className="image-inputs" style={{ width: '100%' }}>
+                    {isOrganizerAvatarLocal ? (
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            handleOrganizerAvatarUpload(file);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        placeholder="Avatar URL"
+                        value={newEvent.organizer.avatar}
+                        onChange={(e) => setNewEvent(prev => ({
                           ...prev,
                           organizer: {
                             ...prev.organizer,
                             avatar: e.target.value
                           }
-                        }))
-                      }
-                    />
-                  )}
-                </div>
-                <div className="image-actions">
-                  <button 
-                    className="toggle-image-button" 
-                    onClick={() => setIsOrganizerAvatarLocal(!isOrganizerAvatarLocal)}
-                  >
-                    {isOrganizerAvatarLocal ? 'Image URL' : 'Upload Picture'}
-                  </button>
-                </div>
-                {newEvent.organizer.avatar && (
-                  <div className="avatar-preview">
-                    <img 
-                      src={newEvent.organizer.avatar} 
-                      alt="Organizer Avatar Preview" 
-                      style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '50%' }}
-                    />
-                    <button 
-                      onClick={() => setNewEvent(prev => ({
-                        ...prev,
-                        organizer: {
-                          ...prev.organizer,
-                          avatar: ''
-                        }
-                      }))}
-                    >
-                      Remove
-                    </button>
+                        }))}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          border: '1px solid #ddd'
+                        }}
+                      />
+                    )}
                   </div>
-                )}
+                  
+                  {newEvent.organizer.avatar && (
+                    <div className="avatar-preview" style={{ 
+                      position: 'relative',
+                      marginTop: '10px',
+                      width: '100px',
+                      height: '100px',
+                      cursor: 'pointer'
+                    }}>
+                      <img 
+                        src={newEvent.organizer.avatar} 
+                        alt="Organizer Avatar Preview" 
+                        style={{ 
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '50%'
+                        }}
+                      />
+                      <div 
+                        onClick={() => setNewEvent(prev => ({
+                          ...prev,
+                          organizer: {
+                            ...prev.organizer,
+                            avatar: ''
+                          }
+                        }))}
+                        className="remove-overlay"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          borderRadius: '50%',
+                          background: 'rgba(220, 53, 69, 0.8)',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          opacity: 0,
+                          transition: 'opacity 0.2s ease',
+                        }}
+                      >
+                        Remove
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div style={{ 
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginTop: '10px'
+                  }}>
+                    <input
+                      type="text"
+                      placeholder="Organizer Name"
+                      value={newEvent.organizer.name}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, name: e.target.value } })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd'
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Organizer Field"
+                      value={newEvent.organizer.field}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, field: e.target.value } })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="location-section">
@@ -580,129 +797,346 @@ function Events() {
 
               <input
                 type="number"
-                placeholder="Current Quantity"
-                value={newEvent.quantity}
-                onChange={(e) => setNewEvent({ ...newEvent, quantity: e.target.value })}
-              />
-              <input
-                type="number"
                 placeholder="Max Quantity"
                 value={newEvent.quantitymax}
                 onChange={(e) => setNewEvent({ ...newEvent, quantitymax: e.target.value })}
               />
-              <input
-                type="datetime-local"
-                value={newEvent.time}
-                onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
-              />
-              <input
-                type="url"
-                placeholder="Video URL (YouTube, Facebook, Drive, etc.)"
-                value={newEvent.videoUrl}
-                onChange={(e) => setNewEvent({ ...newEvent, videoUrl: e.target.value })}
-              />
               
-              <h4>Benefits</h4>
-              <div className="benefit-section">
-                <div className="benefit-inputs">
-                  <input
-                    type="text"
-                    placeholder="Benefit Text"
-                    value={benefitText}
-                    onChange={(e) => setBenefitText(e.target.value)}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Benefit Icon"
-                    value={benefitIcon}
-                    onChange={(e) => setBenefitIcon(e.target.value)}
-                  />
-                </div>
-                <button className="add-benefit-button" onClick={handleAddBenefit}>
-                  Add Benefit
-                </button>
+              <div style={{ marginBottom: '20px' }}>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    // Update newEvent time when date changes
+                    if (selectedTimeSlot) {
+                      const dateTime = new Date(`${e.target.value}T${timeSlots[selectedTimeSlot]}`);
+                      setNewEvent({ ...newEvent, time: dateTime.toISOString() });
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    marginBottom: '10px'
+                  }}
+                />
                 
-                <div className="benefits-list">
-                  {newEvent.benefits.map((benefit, index) => (
-                    <div key={index} className="benefit-item">
-                      <FontAwesomeIcon icon={benefit.icon} />
-                      <span>{benefit.text}</span>
-                    </div>
-                  ))}
-                </div>
+                <select
+                  value={selectedTimeSlot}
+                  onChange={(e) => {
+                    setSelectedTimeSlot(e.target.value);
+                    if (selectedDate) {
+                      const dateTime = new Date(`${selectedDate}T${timeSlots[e.target.value]}`);
+                      setNewEvent({ ...newEvent, time: dateTime.toISOString() });
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    backgroundColor: '#fff', // Add white background
+                    color: '#333',          // Add dark gray text color
+                    cursor: 'pointer'       // Add pointer cursor
+                  }}
+                >
+                  <option value="">Select time slot</option>
+                  <option value="morning">Morning (7:00 AM - 11:30 AM)</option>
+                  <option value="afternoon">Afternoon (12:30 PM - 5:00 PM)</option>
+                </select>
               </div>
-
-              <h4>Guests</h4>
-              <div className="guest-section">
-                <div className="guest-inputs">
-                  <input
-                    type="text"
-                    placeholder="Guest Name"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                  />
-                  <div className="guest-image-section">
-                    {isGuestImageLocal ? (
+              
+              <div className="video-url-section">
+                <input
+                  type="url"
+                  placeholder="Video URL (YouTube, Facebook, Drive, etc.)"
+                  value={newEvent.videoUrl}
+                  onChange={(e) => setNewEvent({ ...newEvent, videoUrl: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    marginBottom: '10px'
+                  }}
+                />
+                {newEvent.videoUrl && <VideoPreview url={newEvent.videoUrl} />}
+              </div>
+              
+              <div className="event-details-section" style={{ display: 'flex', gap: '20px' }}>
+                {/* Benefits on the left */}
+                <div className="benefits-container" style={{ flex: '1' }}>
+                  <h4>Benefits</h4>
+                  <div className="benefit-section" style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="benefits-list" style={scrollableListStyle}>
+                      {newEvent.benefits.map((benefit, index) => (
+                        <div key={index} className="benefit-item" style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px',
+                          marginBottom: '5px',
+                          padding: '5px',
+                          backgroundColor: '#f9f9f9',
+                          borderRadius: '4px'
+                        }}>
+                          <FontAwesomeIcon icon={benefit.icon} />
+                          <span>{benefit.text}</span>
+                          <button 
+                            onClick={() => {
+                              setNewEvent(prev => ({
+                                ...prev,
+                                benefits: prev.benefits.filter((_, i) => i !== index)
+                              }));
+                            }}
+                            style={{
+                              marginLeft: 'auto',
+                              background: 'none',
+                              border: 'none',
+                              color: 'red',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="benefit-inputs" style={{ marginTop: '10px' }}>
                       <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setGuestPicture(reader.result);
-                              setIsGuestImageLocal(true);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
+                        type="text"
+                        placeholder="Benefit Text"
+                        value={benefitText}
+                        onChange={(e) => setBenefitText(e.target.value)}
                       />
-                    ) : (
-                      <>
-                        <input
-                          type="text"
-                          placeholder="Guest Picture URL"
-                          value={guestPicture}
-                          onChange={(e) => setGuestPicture(e.target.value)}
-                        />
-                        <button 
-                          className="toggle-image-button" 
-                          onClick={() => setIsGuestImageLocal(true)}
-                        >
-                          Upload Picture
-                        </button>
-                      </>
-                    )}
-                    {guestPicture && (
-                      <div className="guest-image-preview">
-                        <img 
-                          src={guestPicture} 
-                          alt="Guest Preview" 
-                        />
-                        <button 
-                          onClick={() => {
-                            setGuestPicture('');
-                            setIsGuestImageLocal(false);
+                      <div className="icon-picker-container" style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsIconPickerOpen(!isIconPickerOpen)}
+                          style={{
+                            padding: '8px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            background: '#fff',
+                            cursor: 'pointer',
+                            width: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
                           }}
                         >
-                          Remove
+                          {selectedIcon ? (
+                            <>
+                              <FontAwesomeIcon icon={selectedIcon} />
+                              <span>Selected Icon</span>
+                            </>
+                          ) : (
+                            'Choose an icon'
+                          )}
                         </button>
+                        
+                        {isIconPickerOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            zIndex: 1000,
+                            background: '#fff',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            padding: '10px',
+                            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+                            width: '300px',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(6, 1fr)',
+                            gap: '10px'
+                          }}>
+                            {commonIcons.map((iconName) => (
+                              <button
+                                key={iconName}
+                                onClick={() => {
+                                  setSelectedIcon(iconName);
+                                  setBenefitIcon(iconName);
+                                  setIsIconPickerOpen(false);
+                                }}
+                                style={{
+                                  padding: '8px',
+                                  border: '1px solid #ddd',
+                                  borderRadius: '4px',
+                                  background: selectedIcon === iconName ? '#e6e6e6' : '#fff',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  justifyContent: 'center',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FontAwesomeIcon icon={iconName} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <button 
+                        className="add-benefit-button" 
+                        onClick={handleAddBenefit}
+                        disabled={!benefitText || !selectedIcon}
+                        style={{
+                          marginTop: '10px',
+                          width: '100%'
+                        }}
+                      >
+                        Add Benefit
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <button className="add-image-button" onClick={handleAddGuest}>
-                  Add Guest
-                </button>
                 
-                <div className="guests-list">
-                  {newEvent.guests.map((guest, index) => (
-                    <div key={index} className="guest-item">
-                      <img src={guest.picture} alt={guest.name} className="guest-picture" />
-                      <span>{guest.name}</span>
+                {/* Guests on the right */}
+                <div className="guests-container" style={{ flex: '1' }}>
+                  <h4>Guests</h4>
+                  <div className="guest-section" style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="guests-list" style={scrollableListStyle}>
+                      {newEvent.guests.map((guest, index) => (
+                        <div key={index} className="guest-item" style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '10px',
+                          marginBottom: '10px',
+                          padding: '5px',
+                          backgroundColor: '#f9f9f9',
+                          borderRadius: '4px' 
+                        }}>
+                          <img 
+                            src={guest.picture} 
+                            alt={guest.name} 
+                            className="guest-picture" 
+                            style={{ 
+                              width: '40px', 
+                              height: '40px', 
+                              objectFit: 'cover', 
+                              borderRadius: '50%' 
+                            }}
+                          />
+                          <span>{guest.name}</span>
+                          <button 
+                            onClick={() => {
+                              setNewEvent(prev => ({
+                                ...prev,
+                                guests: prev.guests.filter((_, i) => i !== index)
+                              }));
+                            }}
+                            style={{
+                              marginLeft: 'auto',
+                              background: 'none',
+                              border: 'none',
+                              color: 'red',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                    <div className="guest-inputs" style={{ marginTop: '10px' }}>
+                      <input
+                        type="text"
+                        placeholder="Guest Name"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                      />
+                      <div className="guest-image-section" style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                          <button 
+                            onClick={() => setIsGuestImageLocal(!isGuestImageLocal)}
+                            style={{
+                              padding: '8px',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px',
+                              background: isGuestImageLocal ? '#e6e6e6' : '#fff',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {isGuestImageLocal ? 'Enter URL Instead' : 'Upload Image'}
+                          </button>
+                        </div>
+
+                        {isGuestImageLocal ? (
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                handleGuestImageUpload(file);
+                              }
+                            }}
+                            style={{
+                              marginBottom: '10px'
+                            }}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            placeholder="Guest Picture URL"
+                            value={guestPicture}
+                            onChange={(e) => setGuestPicture(e.target.value)}
+                            style={{
+                              marginBottom: '10px',
+                              width: '100%',
+                              padding: '8px',
+                              borderRadius: '4px',
+                              border: '1px solid #ddd'
+                            }}
+                          />
+                        )}
+
+                        {guestPicture && (
+                          <div className="guest-image-preview" style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px',
+                            marginTop: '10px'
+                          }}>
+                            <img 
+                              src={guestPicture} 
+                              alt="Guest Preview" 
+                              style={{ 
+                                width: '100px',
+                                height: '100px',
+                                objectFit: 'cover',
+                                borderRadius: '4px'
+                              }}
+                            />
+                            <button 
+                              onClick={() => {
+                                setGuestPicture('');
+                                setIsGuestImageLocal(false);
+                              }}
+                              style={{
+                                padding: '5px 10px',
+                                border: '1px solid #ddd',
+                                borderRadius: '4px',
+                                background: '#fff',
+                                cursor: 'pointer',
+                                color: 'red'
+                              }}
+                            >
+                              Remove Image
+                            </button>
+                          </div>
+                        )
+                        }
+                      </div>
+                      <button className="add-image-button" onClick={handleAddGuest}>
+                        Add Guest
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               

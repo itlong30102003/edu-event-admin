@@ -320,7 +320,7 @@
 .edit-form-panel {
     background-color: #fff;
     border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    border: 1px solid #eaecef;
     overflow: hidden;
 }
 
@@ -342,8 +342,7 @@
 
 .form-group input, 
 .form-group textarea, 
-.form-group select,
-.avatar-upload-controls input {
+.form-group select {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #ddd;
@@ -351,17 +350,15 @@
     font-size: 1rem;
     font-family: inherit;
     transition: border-color 0.3s;
-    background-color: #ffffff; /* Add this line */
-    color: #333; /* Add this line for better text contrast */
+    background-color: #fff; /* Add explicit white background */
+    color: #333; /* Add explicit text color */
 }
 
 .form-group input:focus, 
 .form-group textarea:focus, 
-.form-group select:focus,
-.avatar-upload-controls input:focus {
+.form-group select:focus {
     border-color: #3498db;
     outline: none;
-    background-color: #ffffff; /* Add this line */
 }
 
 .form-group textarea {
@@ -1103,155 +1100,5 @@
   
   .organizer-details-section {
     padding: 0;
-  }
-}
-
-/* QR Code Section */
-.qr-code-section {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.qr-button:hover {
-  background-color: #45a049 !important;
-}
-
-/* Update event images gallery styles */
-.event-images-gallery {
-  margin-bottom: 2rem;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-}
-
-.event-carousel {
-  position: relative;
-  aspect-ratio: 16/9;
-  width: 100%;
-}
-
-.event-carousel .carousel .slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  aspect-ratio: 16/9;
-}
-
-.event-carousel .carousel.carousel-slider .control-dots {
-  bottom: 20px;
-}
-
-.event-carousel .carousel .control-dots .dot {
-  background: #fff;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-  width: 10px;
-  height: 10px;
-  margin: 0 5px;
-}
-
-.event-carousel .carousel .control-dots .dot.selected {
-  background: #3498db;
-}
-
-/* Update guests grid styles */
-.guests-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
-  padding: 1.5rem;
-}
-
-.guest-card {
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  transition: transform 0.2s;
-}
-
-.guest-card:hover {
-  transform: translateY(-5px);
-}
-
-.guest-image {
-  width: 100%;
-  aspect-ratio: 1/1;
-  object-fit: cover;
-}
-
-.guest-name {
-  padding: 1rem;
-  margin: 0;
-  text-align: center;
-  font-size: 1rem;
-  color: #2c3e50;
-  background: #f8f9fa;
-}
-
-/* Update media grid styles */
-.media-map-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  margin-top: 1rem;
-}
-
-@media (max-width: 768px) {
-  .media-map-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.video-container {
-  aspect-ratio: 16/9;
-  width: 100%;
-}
-
-.video-container iframe {
-  width: 100%;
-  height: 100%;
-  border-radius: 8px;
-}
-
-.map-container {
-  aspect-ratio: 16/9;
-  width: 90%;
-}
-
-.guest-image-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.toggle-upload-button {
-  padding: 8px 16px;
-  background-color: #f0f0f0;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.toggle-upload-button:hover {
-  background-color: #e0e0e0;
-}
-
-/* Add responsive styles */
-@media (max-width: 768px) {
-  .event-content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .guests-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  }
-
-  .event-title {
-    font-size: 1.8rem;
   }
 }

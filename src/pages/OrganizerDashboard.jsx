@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import "./OrganizerDashboard.css";
-import { useLocation } from "react-router-dom";
 import { auth } from "../firebase"; // Import auth from firebase
 
 // Import components
@@ -8,12 +8,12 @@ import Overview from "../component/Overview";
 import Events from "../component/Events";
 import Locations from "../component/Locations";
 import PastEvents from "../component/PastEvents";
-import { Save, Edit } from "lucide-react";
+import AllChats from "../component/AllChats"; // Import new AllChats component
+import Chat from "../component/Chat"; // Import Chat component
+import { Save, Edit, MessageCircle } from "lucide-react"; // Thêm MessageCircle
 import { db, storage } from "../firebase"; // adjust path as needed
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-
 
 function OrganizerDashboard() {
   const location = useLocation();
@@ -167,7 +167,6 @@ function OrganizerDashboard() {
     }
   };
   
-  
   // Handle logout
   const handleLogout = () => {
     // Implement logout functionality here
@@ -209,6 +208,12 @@ function OrganizerDashboard() {
                 <span>Locations</span>
               </button>
             </li>
+            <li>
+              <button onClick={() => handleSectionChange("chat")} className={`sidebar-link ${selectedSection === "chat" ? "active" : ""}`}>
+                <span className="icon"><MessageCircle size={18} /></span>
+                <span>Chat</span>
+              </button>
+            </li>
           </ul>
         </nav>
       </aside>
@@ -221,7 +226,8 @@ function OrganizerDashboard() {
               {selectedSection === "overview" ? "Overview" :
                selectedSection === "events" ? "Events Management" :
                selectedSection === "past" ? "Past Events" :
-               selectedSection === "locations" ? "Locations Management" : ""}
+               selectedSection === "locations" ? "Locations Management" :
+               selectedSection === "chat" ? "Inbox" : ""}
             </h1>
             {/* Touchable welcome text that opens modal */}
             {organizer && (
@@ -405,10 +411,19 @@ function OrganizerDashboard() {
         )}
 
         {/* Render components based on selected section */}
-        {selectedSection === "overview" && <Overview />}
-        {selectedSection === "events" && <Events />}
-        {selectedSection === "past" && <PastEvents />}
-        {selectedSection === "locations" && <Locations />}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              selectedSection === "overview" ? <Overview /> :
+              selectedSection === "events" ? <Events /> :
+              selectedSection === "past" ? <PastEvents /> :
+              selectedSection === "locations" ? <Locations /> :
+              selectedSection === "chat" ? <AllChats /> : null
+            }
+          />
+          <Route path="/chat/:organizerId" element={<Chat />} />
+        </Routes>
       </main>
     </div>
   );

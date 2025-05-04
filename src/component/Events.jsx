@@ -14,6 +14,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import { far } from '@fortawesome/free-regular-svg-icons';
+import { getAuth } from "firebase/auth";
 
 // Fix the default icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -38,27 +39,39 @@ function Events() {
     category: "",
     host: "",
     images: [], // Change image to images array
-    organizer: {
-      name: "",
-      field: "",
-      avatar: "",
-    },
+    userId: "", // Replace organizer object with userId
     location: "",
     quantitymax: "",
     time: "",
     videoUrl: "", // Changed from trailerId
     benefits: [], // Add a new field for benefits
     guests: [], // Add a new field for guests
+    point: "", // Add point field
   });
   const [isLocalImage, setIsLocalImage] = useState(false);
-  // Add this state for organizer avatar input type
-  const [isOrganizerAvatarLocal, setIsOrganizerAvatarLocal] = useState(false);
   // Add a new state for guest image handling
   const [isGuestImageLocal, setIsGuestImageLocal] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
   const storage = getStorage();
+  const auth = getAuth();
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (user) {
+        setCurrentUser(user);
+        // Set userId in newEvent when user is available
+        setNewEvent(prev => ({
+          ...prev,
+          userId: user.uid
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     fetchEvents();
@@ -213,8 +226,8 @@ function Events() {
 
   // Modify the handleAddEvent function
   const handleAddEvent = async () => {
-    if (!newEvent.title || !selectedDate || !selectedTimeSlot || !selectedLocation) {
-      alert("Please fill in all required fields: title, date, time slot, and location!");
+    if (!newEvent.title || !selectedDate || !selectedTimeSlot || !selectedLocation || !currentUser) {
+      alert("Please fill in all required fields and ensure you're logged in!");
       return;
     }
 
@@ -251,24 +264,20 @@ function Events() {
       category: "",
       host: "",
       images: [],
-      organizer: {
-        name: "",
-        field: "",
-        avatar: "",
-      },
+      userId: currentUser?.uid || "", // Keep current user ID
       location: "",
       quantitymax: "",
       time: "",
       videoUrl: "",
       benefits: [],
       guests: [],
+      point: "", // Reset point field
     });
     setBenefitText('');
     setBenefitIcon('');
     setGuestName('');
     setGuestPicture('');
     setIsLocalImage(false);
-    setIsOrganizerAvatarLocal(false);
     setIsGuestImageLocal(false);
     setIsModalOpen(false);
     setSelectedLocation(null);
@@ -318,22 +327,6 @@ function Events() {
       }));
     } catch (error) {
       alert('Failed to upload image. Please try again.');
-    }
-  };
-
-  // Replace the organizer avatar upload handler
-  const handleOrganizerAvatarUpload = async (file) => {
-    try {
-      const imageUrl = await uploadImage(file);
-      setNewEvent(prev => ({
-        ...prev,
-        organizer: {
-          ...prev.organizer,
-          avatar: imageUrl
-        }
-      }));
-    } catch (error) {
-      alert('Failed to upload organizer avatar. Please try again.');
     }
   };
 
@@ -421,6 +414,15 @@ function Events() {
     afternoon: '12:30:00'
   };
 
+  // Add this helper function to get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   return (
     <section className="events-section">
       <div className="events-container">
@@ -462,8 +464,14 @@ function Events() {
       </div>
 
       {isModalOpen && (
-        <div className="modal">
-          <div className="modal-content">
+        <div 
+          className="modal" 
+          onClick={() => setIsModalOpen(false)} // Handle overlay click
+        >
+          <div 
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()} // Prevent click from reaching overlay
+          >
             <h3>Add New Event</h3>
             <div className="modal-body">
               <input
@@ -540,9 +548,14 @@ function Events() {
                 value={newEvent.host}
                 onChange={(e) => setNewEvent({ ...newEvent, host: e.target.value })}
               />
-              <div>
+              
+              <input
+                type="text"
+                placeholder="Category"
+                value={newEvent.category}
+                onChange={(e) => setNewEvent({ ...newEvent, category: e.target.value })}
+              />
 
-              </div>
               <textarea
                 placeholder="About"
                 value={newEvent.about}
@@ -560,159 +573,6 @@ function Events() {
                   color: '#333'
                 }}
               />
-              <input
-                type="text"
-                placeholder="Category"
-                value={newEvent.category}
-                onChange={(e) => setNewEvent({ ...newEvent, category: e.target.value })}
-              />
-
-              <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-                <div className="organizer-avatar-section" style={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  width: '300px',
-                  margin: '0 auto'
-                }}>
-                  <label>Organizer Avatar</label>
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                    <button 
-                      onClick={() => setIsOrganizerAvatarLocal(!isOrganizerAvatarLocal)}
-                      style={{
-                        padding: '8px',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        background: isOrganizerAvatarLocal ? '#e6e6e6' : '#fff',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {isOrganizerAvatarLocal ? 'Enter URL Instead' : 'Upload Image'}
-                    </button>
-                  </div>
-
-                  <div className="image-inputs" style={{ width: '100%' }}>
-                    {isOrganizerAvatarLocal ? (
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            handleOrganizerAvatarUpload(file);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder="Avatar URL"
-                        value={newEvent.organizer.avatar}
-                        onChange={(e) => setNewEvent(prev => ({
-                          ...prev,
-                          organizer: {
-                            ...prev.organizer,
-                            avatar: e.target.value
-                          }
-                        }))}
-                        style={{
-                          width: '100%',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          border: '1px solid #ddd'
-                        }}
-                      />
-                    )}
-                  </div>
-                  
-                  {newEvent.organizer.avatar && (
-                    <div className="avatar-preview" style={{ 
-                      position: 'relative',
-                      marginTop: '10px',
-                      width: '100px',
-                      height: '100px',
-                      cursor: 'pointer'
-                    }}>
-                      <img 
-                        src={newEvent.organizer.avatar} 
-                        alt="Organizer Avatar Preview" 
-                        style={{ 
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover',
-                          borderRadius: '50%'
-                        }}
-                      />
-                      <div 
-                        onClick={() => setNewEvent(prev => ({
-                          ...prev,
-                          organizer: {
-                            ...prev.organizer,
-                            avatar: ''
-                          }
-                        }))}
-                        className="remove-overlay"
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: '100%',
-                          borderRadius: '50%',
-                          background: 'rgba(220, 53, 69, 0.8)',
-                          color: 'white',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          opacity: 0,
-                          transition: 'opacity 0.2s ease',
-                        }}
-                      >
-                        Remove
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div style={{ 
-                    width: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    marginTop: '10px'
-                  }}>
-                    <input
-                      type="text"
-                      placeholder="Organizer Name"
-                      value={newEvent.organizer.name}
-                      onChange={(e) =>
-                        setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, name: e.target.value } })
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd'
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Organizer Field"
-                      value={newEvent.organizer.field}
-                      onChange={(e) =>
-                        setNewEvent({ ...newEvent, organizer: { ...newEvent.organizer, field: e.target.value } })
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
 
               <div className="location-section">
                 <div className="location-search">
@@ -741,13 +601,13 @@ function Events() {
                     onMapClick={(e) => {
                       const { lat, lng } = e.latlng;
                       setSelectedLocation({
-                        address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+                        address: `${lat}, ${lng}`,
                         coordinates: { lat, lng }
                       });
                       setPosition([lat, lng]);
                       setNewEvent(prev => ({
                         ...prev,
-                        location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                        location: `${lat}, ${lng}`
                       }));
                     }}
                   />
@@ -770,12 +630,12 @@ function Events() {
                             const position = marker.getLatLng();
                             const { lat, lng } = position;
                             setSelectedLocation({
-                              address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+                              address: `${lat}, ${lng}`,
                               coordinates: { lat, lng }
                             });
                             setNewEvent(prev => ({
                               ...prev,
-                              location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                              location: `${lat}, ${lng}`
                             }));
                           }
                         }}
@@ -806,14 +666,45 @@ function Events() {
 
               <input
                 type="number"
+                min="1" // Prevents negative numbers
                 placeholder="Max Quantity"
                 value={newEvent.quantitymax}
-                onChange={(e) => setNewEvent({ ...newEvent, quantitymax: e.target.value })}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (value > 0 || e.target.value === '') { // Only update if positive or empty
+                    setNewEvent({ ...newEvent, quantitymax: e.target.value });
+                  }
+                }}
+              />
+
+              <div>
+                
+              </div>
+              
+              <input
+                type="number"
+                min="1" // Prevents negative numbers
+                placeholder="Point"
+                value={newEvent.point}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (value > 0 || e.target.value === '') { // Only update if positive or empty
+                    setNewEvent({ ...newEvent, point: e.target.value });
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  marginBottom: '10px'
+                }}
               />
               
               <div style={{ marginBottom: '20px' }}>
                 <input
                   type="date"
+                  min={getTodayDate()} // Prevents selecting past dates
                   value={selectedDate}
                   onChange={(e) => {
                     setSelectedDate(e.target.value);

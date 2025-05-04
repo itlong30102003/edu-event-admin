@@ -176,7 +176,7 @@ function EventDetailPage() {
   };
 
   const handleRemoveGuest = (index) => {
-    setEditedEvent(prev => ({
+    setEditedEvent (prev => ({
       ...prev,
       guests: prev.guests.filter((_, i) => i !== index)
     }));
@@ -196,8 +196,33 @@ function EventDetailPage() {
 
   const handleUpdateEvent = async () => {
     try {
-      const eventRef = doc(db, "event", eventId);
-      
+      // Validate required fields and constraints
+      if (!editedEvent.title || !selectedDate || !selectedTimeSlot) {
+        alert("Please fill in all required fields!");
+        return;
+      }
+
+      // Validate quantity
+      if (!editedEvent.quantitymax || editedEvent.quantitymax <= 0) {
+        alert("Maximum quantity must be greater than 0");
+        return;
+      }
+
+      // Validate point
+      if (!editedEvent.point || editedEvent.point <= 0) {
+        alert("Point must be greater than 0");
+        return;
+      }
+
+      // Validate date (can't be before current date)
+      const selectedDateTime = new Date(selectedDate);
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0); // Reset time to start of day
+      if (selectedDateTime < currentDate) {
+        alert("Selected date cannot be before current date");
+        return;
+      }
+
       // Create event datetime from selected date and time slot
       const [year, month, day] = selectedDate.split('-');
       const [hours, minutes, seconds] = timeSlots[selectedTimeSlot].split(':');
@@ -209,9 +234,10 @@ function EventDetailPage() {
         timeSlot: selectedTimeSlot
       };
 
-      // Remove id field as it shouldn't be updated
-      const { id, ...finalUpdateData } = updateData;
+      // Remove id and organizer fields
+      const { id, organizer, ...finalUpdateData } = updateData;
       
+      const eventRef = doc(db, "event", eventId);
       await updateDoc(eventRef, finalUpdateData);
       setEvent(updateData);
       setIsEditModalOpen(false);
@@ -362,6 +388,12 @@ function EventDetailPage() {
     return null;
   }
 
+  const getTodayDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.toISOString().split('T')[0];
+  };
+
   if (loading) {
     return <div className="loading-container">
       <div className="loading-spinner"></div>
@@ -489,20 +521,6 @@ function EventDetailPage() {
             </div>
           )}
           
-          {/* Display Benefits */}
-          {event.benefits && event.benefits.length > 0 && (
-            <div className="event-benefits-panel">
-              <h3 className="panel-title">Benefits</h3>
-              <ul className="benefits-list">
-                {event.benefits.map((benefit, index) => (
-                  <li key={index} className="benefit-item">
-                    <FontAwesomeIcon icon={benefit.icon} className="benefit-icon" />
-                    <span className="benefit-text">{benefit.text}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
           
           {/* Display Guests */}
           {event.guests && event.guests.length > 0 && (
@@ -518,6 +536,21 @@ function EventDetailPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          
+          {/* Display Benefits */}
+          {event.benefits && event.benefits.length > 0 && (
+            <div className="event-benefits-panel">
+              <h3 className="panel-title">Benefits</h3>
+              <ul className="benefits-list">
+                {event.benefits.map((benefit, index) => (
+                  <li key={index} className="benefit-item">
+                    <FontAwesomeIcon icon={benefit.icon} className="benefit-icon" />
+                    <span className="benefit-text">{benefit.text}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
@@ -710,25 +743,31 @@ function EventDetailPage() {
                     <div style={{ marginBottom: '20px' }}>
                       <input
                         type="date"
+                        min={getTodayDate()}
                         value={selectedDate}
                         onChange={(e) => {
-                          setSelectedDate(e.target.value);
-                          // Update editedEvent time when date changes
-                          if (selectedTimeSlot) {
-                            const dateTime = new Date(`${e.target.value}T${timeSlots[selectedTimeSlot]}`);
-                            setEditedEvent(prev => ({
-                              ...prev,
-                              time: dateTime.toISOString(),
-                              timeSlot: selectedTimeSlot
-                            }));
+                          const selectedDate = new Date(e.target.value);
+                          const currentDate = new Date();
+                          currentDate.setHours(0, 0, 0, 0);
+                          
+                          if (selectedDate >= currentDate) {
+                            setSelectedDate(e.target.value);
+                            if (selectedTimeSlot) {
+                              const dateTime = new Date(`${e.target.value}T${timeSlots[selectedTimeSlot]}`);
+                              setEditedEvent(prev => ({
+                                ...prev,
+                                time: dateTime.toISOString()
+                              }));
+                            }
+                          } else {
+                            alert("Cannot select a past date");
                           }
                         }}
                         style={{
                           width: '100%',
                           padding: '8px',
                           borderRadius: '4px',
-                          border: '1px solid #ddd',
-                          marginBottom: '10px'
+                          border: '1px solid #ddd'
                         }}
                       />
                       
@@ -767,8 +806,46 @@ function EventDetailPage() {
                     <input
                       type="number"
                       name="quantitymax"
+                      min="1"
                       value={editedEvent.quantitymax}
-                      onChange={handleInputChange}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value);
+                        if (value > 0) {
+                          handleInputChange(e);
+                        }
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === '-' || e.key === '+' || e.key === 'e') {
+                          e.preventDefault();
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Point</label>
+                    <input
+                      type="number"
+                      name="point"
+                      min="1"
+                      value={editedEvent.point}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value);
+                        if (value > 0) {
+                          handleInputChange(e);
+                        }
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === '-' || e.key === '+' || e.key === 'e') {
+                          e.preventDefault();
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        border: '1px solid #ddd'
+                      }}
                     />
                   </div>
 
@@ -786,12 +863,13 @@ function EventDetailPage() {
                           maxZoom={19}
                         />
                         <MapEvents 
-                          onMapClick={(e) => {
+                          onMapClick={async (e) => {
                             const { lat, lng } = e.latlng;
+                            // Update with coordinates format only
                             setEditedEvent(prev => ({
                               ...prev,
                               coordinates: { lat, lng },
-                              location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                              location: `${lat}, ${lng}`
                             }));
                           }}
                         />
@@ -801,14 +879,15 @@ function EventDetailPage() {
                               position={[editedEvent.coordinates.lat, editedEvent.coordinates.lng]}
                               draggable={true}
                               eventHandlers={{
-                                dragend: (e) => {
+                                dragend: async (e) => {
                                   const marker = e.target;
                                   const position = marker.getLatLng();
                                   const { lat, lng } = position;
+                                  // Update with coordinates format only
                                   setEditedEvent(prev => ({
                                     ...prev,
                                     coordinates: { lat, lng },
-                                    location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                                    location: `${lat}, ${lng}`
                                   }));
                                 }
                               }}
@@ -826,6 +905,10 @@ function EventDetailPage() {
                           </>
                         )}
                       </MapContainer>
+                      {/* Display current location */}
+                      <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
+                        Selected location: {editedEvent.location}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -872,120 +955,6 @@ function EventDetailPage() {
                           )}
                         </div>
                       )}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="edit-form-panel media-content">
-                  <h3 className="panel-title">Organizer Information</h3>
-                  <div className="organizer-two-column">
-                    <div className="organizer-avatar-section">
-                      <div className="avatar-container">
-                        {editedEvent.organizer?.avatar && (
-                          <div className="avatar-preview">
-                            <img 
-                              src={editedEvent.organizer.avatar} 
-                              alt="Organizer Avatar Preview"
-                            />
-                            <button
-                              className="remove-avatar-button"
-                              onClick={() => setEditedEvent(prev => ({
-                                ...prev,
-                                organizer: {
-                                  ...prev.organizer,
-                                  avatar: ''
-                                }
-                              }))}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        )}
-                        
-                        <div className="avatar-upload-controls">
-                          <button 
-                            className="toggle-upload-button"
-                            onClick={() => setIsOrganizerAvatarLocal(!isOrganizerAvatarLocal)}
-                          >
-                            {isOrganizerAvatarLocal ? 'Enter URL Instead' : 'Upload Image'}
-                          </button>
-                          
-                          {isOrganizerAvatarLocal ? (
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                  handleOrganizerAvatarUpload(file);
-                                }
-                              }}
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              placeholder="Avatar URL"
-                              value={editedEvent.organizer?.avatar || ""}
-                              onChange={(e) => {
-                                const imageUrl = e.target.value;
-                                // Create new image to test URL
-                                const img = new Image();
-                                img.onload = () => {
-                                  setEditedEvent(prev => ({
-                                    ...prev,
-                                    organizer: {
-                                      ...prev.organizer,
-                                      avatar: imageUrl
-                                    }
-                                  }));
-                                };
-                                img.onerror = () => {
-                                  alert('Invalid image URL. Please try another URL.');
-                                };
-                                img.src = imageUrl;
-                              }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="organizer-details-section">
-                      <div className="form-group">
-                        <label>Organizer Name</label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={editedEvent.organizer?.name || ""}
-                          onChange={(e) =>
-                            setEditedEvent(prev => ({
-                              ...prev,
-                              organizer: {
-                                ...prev.organizer,
-                                name: e.target.value
-                              }
-                            }))
-                          }
-                        />
-                      </div>
-                      
-                      <div className="form-group">
-                        <label>Organizer Field</label>
-                        <input
-                          type="text"
-                          name="field"
-                          value={editedEvent.organizer?.field || ""}
-                          onChange={(e) =>
-                            setEditedEvent(prev => ({
-                              ...prev,
-                              organizer: {
-                                ...prev.organizer,
-                                field: e.target.value
-                              }
-                            }))
-                          }
-                        />
-                      </div>
                     </div>
                   </div>
                 </div>

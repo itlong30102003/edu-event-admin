@@ -7,7 +7,7 @@ import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCalendarAlt, faMapMarkerAlt, faTag, faUserTie, faUsers, faTimes } from '@fortawesome/free-solid-svg-icons';
-import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { QRCodeSVG } from 'qrcode.react';
 import { Carousel } from 'react-responsive-carousel';
 import "react-responsive-carousel/lib/styles/carousel.min.css";
@@ -36,12 +36,14 @@ function EventDetailPage() {
   const [selectedIcon, setSelectedIcon] = useState('');
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [isLocalImage, setIsLocalImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isOrganizerAvatarLocal, setIsOrganizerAvatarLocal] = useState(false);
   const [isGuestImageLocal, setIsGuestImageLocal] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const [guestImagePreview, setGuestImagePreview] = useState('');
   const { eventId } = useParams();
   const navigate = useNavigate();
 
@@ -81,6 +83,13 @@ function EventDetailPage() {
   // Set initial values when opening the edit modal
   useEffect(() => {
     if (isEditModalOpen && event) {
+      // Ensure coordinates exist
+      const eventWithDefaults = {
+        ...event,
+        coordinates: event.coordinates || { lat: 0, lng: 0 }
+      };
+      setEditedEvent(eventWithDefaults);
+      
       // Set the initial selected date and time slot based on event time
       const eventDate = event.time.toDate();
       setSelectedDate(eventDate.toISOString().split('T')[0]);
@@ -189,11 +198,16 @@ function EventDetailPage() {
     try {
       const eventRef = doc(db, "event", eventId);
       
-      // Convert time string to Timestamp if it's changed
-      let updateData = { ...editedEvent };
-      if (typeof updateData.time === 'string') {
-        updateData.time = Timestamp.fromDate(new Date(updateData.time));
-      }
+      // Create event datetime from selected date and time slot
+      const [year, month, day] = selectedDate.split('-');
+      const [hours, minutes, seconds] = timeSlots[selectedTimeSlot].split(':');
+      const eventDateTime = new Date(year, month - 1, day, hours, minutes, seconds);
+
+      let updateData = {
+        ...editedEvent,
+        time: Timestamp.fromDate(eventDateTime),
+        timeSlot: selectedTimeSlot
+      };
 
       // Remove id field as it shouldn't be updated
       const { id, ...finalUpdateData } = updateData;
@@ -214,14 +228,34 @@ function EventDetailPage() {
   };
 
   const handleImageUpload = async (file) => {
+    if (!file) return;
+    
     try {
-      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      // Create preview immediately
+      const previewUrl = URL.createObjectURL(file);
       setEditedEvent(prev => ({
         ...prev,
-        images: [...prev.images, downloadURL]
+        images: [...prev.images, previewUrl]
       }));
+
+      // Upload to Firebase
+      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytes(storageRef, file);
+      
+      // Handle the upload
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // Replace preview with actual URL
+      setEditedEvent(prev => ({
+        ...prev,
+        images: prev.images.map(img => 
+          img === previewUrl ? downloadURL : img
+        )
+      }));
+
+      // Cleanup
+      URL.revokeObjectURL(previewUrl);
     } catch (error) {
       console.error("Error uploading image:", error);
       alert('Failed to upload image. Please try again.');
@@ -234,6 +268,99 @@ function EventDetailPage() {
       images: prev.images.filter((_, i) => i !== index)
     }));
   };
+
+  // Replace the guest image upload handler
+  const handleGuestImageUpload = async (file) => {
+    if (!file) return;
+    
+    try {
+      // Show preview immediately
+      const previewUrl = URL.createObjectURL(file);
+      setGuestImagePreview(previewUrl);
+
+      // Upload to Firebase
+      const storageRef = ref(storage, `guests/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytes(storageRef, file);
+      
+      // Get download URL
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // Set the guest picture URL
+      setGuestPicture(downloadURL);
+      
+      // Cleanup preview
+      URL.revokeObjectURL(previewUrl);
+    } catch (error) {
+      console.error("Error uploading guest image:", error);
+      alert('Failed to upload guest image. Please try again.');
+    }
+  };
+
+  // Update the handleGuestImageUrl function
+  const handleGuestImageUrl = (url) => {
+    setGuestPicture(url);
+    setGuestImagePreview(url);
+  };
+
+  // Add this new function for handling organizer avatar upload
+  const handleOrganizerAvatarUpload = async (file) => {
+    if (!file) return;
+    
+    try {
+      // Show preview immediately
+      const previewUrl = URL.createObjectURL(file);
+      setEditedEvent(prev => ({
+        ...prev,
+        organizer: {
+          ...prev.organizer,
+          avatar: previewUrl
+        }
+      }));
+
+      // Upload to Firebase
+      const storageRef = ref(storage, `organizers/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytes(storageRef, file);
+      
+      // Get download URL
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // Update with actual URL
+      setEditedEvent(prev => ({
+        ...prev,
+        organizer: {
+          ...prev.organizer,
+          avatar: downloadURL
+        }
+      }));
+
+      // Cleanup
+      URL.revokeObjectURL(previewUrl);
+    } catch (error) {
+      console.error("Error uploading organizer avatar:", error);
+      alert('Failed to upload avatar. Please try again.');
+    }
+  };
+
+  // Add this component near your other component definitions
+  function MapEvents({ onMapClick }) {
+    const map = useMap();
+    
+    useEffect(() => {
+      if (!map) return;
+      
+      map.on('click', (e) => {
+        onMapClick(e);
+      });
+      
+      return () => {
+        map.off('click');
+      };
+    }, [map, onMapClick]);
+    
+    return null;
+  }
 
   if (loading) {
     return <div className="loading-container">
@@ -563,28 +690,76 @@ function EventDetailPage() {
                       onChange={handleInputChange}
                     />
                   </div>
+
+                  <div className="form-group">
+                    <label>Host</label>
+                    <input
+                      type="text"
+                      name="host"
+                      value={editedEvent.host || ""}
+                      onChange={handleInputChange}
+                    />
+                  </div>
                 </div>
                 
                 <div className="edit-form-panel location-time">
                   <h3 className="panel-title">Location & Time</h3>
-                  <div className="form-group">
-                    <label>Location</label>
-                    <input
-                      type="text"
-                      name="location"
-                      value={editedEvent.location}
-                      onChange={handleInputChange}
-                    />
-                  </div>
                   
                   <div className="form-group">
                     <label>Date & Time</label>
-                    <input
-                      type="datetime-local"
-                      name="time"
-                      value={editedEvent.time}
-                      onChange={handleInputChange}
-                    />
+                    <div style={{ marginBottom: '20px' }}>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => {
+                          setSelectedDate(e.target.value);
+                          // Update editedEvent time when date changes
+                          if (selectedTimeSlot) {
+                            const dateTime = new Date(`${e.target.value}T${timeSlots[selectedTimeSlot]}`);
+                            setEditedEvent(prev => ({
+                              ...prev,
+                              time: dateTime.toISOString(),
+                              timeSlot: selectedTimeSlot
+                            }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          border: '1px solid #ddd',
+                          marginBottom: '10px'
+                        }}
+                      />
+                      
+                      <select
+                        value={selectedTimeSlot}
+                        onChange={(e) => {
+                          setSelectedTimeSlot(e.target.value);
+                          if (selectedDate) {
+                            const dateTime = new Date(`${selectedDate}T${timeSlots[e.target.value]}`);
+                            setEditedEvent(prev => ({
+                              ...prev,
+                              time: dateTime.toISOString(),
+                              timeSlot: e.target.value
+                            }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          border: '1px solid #ddd',
+                          backgroundColor: '#fff',
+                          color: '#333',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">Select time slot</option>
+                        <option value="morning">Morning (7:00 AM - 11:30 AM)</option>
+                        <option value="afternoon">Afternoon (12:30 PM - 5:00 PM)</option>
+                      </select>
+                    </div>
                   </div>
                   
                   <div className="form-group">
@@ -595,6 +770,63 @@ function EventDetailPage() {
                       value={editedEvent.quantitymax}
                       onChange={handleInputChange}
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Location & Coordinates</label>
+                    <div className="location-map-container" style={{ marginBottom: '20px' }}>
+                      <MapContainer 
+                        center={[editedEvent.coordinates?.lat || 10.980671753776012, editedEvent.coordinates?.lng || 106.67452525297074]} 
+                        zoom={17} 
+                        style={{ height: '400px', width: '100%', borderRadius: '4px' }}
+                      >
+                        <TileLayer
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                          maxZoom={19}
+                        />
+                        <MapEvents 
+                          onMapClick={(e) => {
+                            const { lat, lng } = e.latlng;
+                            setEditedEvent(prev => ({
+                              ...prev,
+                              coordinates: { lat, lng },
+                              location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                            }));
+                          }}
+                        />
+                        {editedEvent.coordinates && (
+                          <>
+                            <Marker
+                              position={[editedEvent.coordinates.lat, editedEvent.coordinates.lng]}
+                              draggable={true}
+                              eventHandlers={{
+                                dragend: (e) => {
+                                  const marker = e.target;
+                                  const position = marker.getLatLng();
+                                  const { lat, lng } = position;
+                                  setEditedEvent(prev => ({
+                                    ...prev,
+                                    coordinates: { lat, lng },
+                                    location: `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+                                  }));
+                                }
+                              }}
+                            />
+                            <Circle
+                              center={[editedEvent.coordinates.lat, editedEvent.coordinates.lng]}
+                              pathOptions={{ 
+                                fillColor: 'red',
+                                fillOpacity: 0.2,
+                                color: 'red',
+                                opacity: 0.5
+                              }}
+                              radius={50}
+                            />
+                          </>
+                        )}
+                      </MapContainer>
+                    </div>
                   </div>
                 </div>
                 
@@ -694,13 +926,24 @@ function EventDetailPage() {
                               type="text"
                               placeholder="Avatar URL"
                               value={editedEvent.organizer?.avatar || ""}
-                              onChange={(e) => setEditedEvent(prev => ({
-                                ...prev,
-                                organizer: {
-                                  ...prev.organizer,
-                                  avatar: e.target.value
-                                }
-                              }))}
+                              onChange={(e) => {
+                                const imageUrl = e.target.value;
+                                // Create new image to test URL
+                                const img = new Image();
+                                img.onload = () => {
+                                  setEditedEvent(prev => ({
+                                    ...prev,
+                                    organizer: {
+                                      ...prev.organizer,
+                                      avatar: imageUrl
+                                    }
+                                  }));
+                                };
+                                img.onerror = () => {
+                                  alert('Invalid image URL. Please try another URL.');
+                                };
+                                img.src = imageUrl;
+                              }}
                             />
                           )}
                         </div>
@@ -811,7 +1054,7 @@ function EventDetailPage() {
                   </div>
                 </div>
                 
-                {/* Guests Section */}
+                {/* Guest Section */}
                 <div className="edit-form-panel guests-info">
                   <h3 className="panel-title">Special Guests</h3>
                   <div className="form-group">
@@ -837,21 +1080,74 @@ function EventDetailPage() {
                             accept="image/*"
                             onChange={(e) => {
                               const file = e.target.files[0];
-                              if (file) {
-                                handleGuestImageUpload(file);
-                              }
+                              if (file) handleGuestImageUpload(file);
                             }}
                           />
                         ) : (
                           <input
                             type="text"
                             value={guestPicture}
-                            onChange={(e) => setGuestPicture(e.target.value)}
+                            onChange={(e) => handleGuestImageUrl(e.target.value)}
                             placeholder="Guest Picture URL"
                           />
                         )}
+
+                        {/* Guest Image Preview */}
+                        {(guestPicture || guestImagePreview) && (
+                          <div className="guest-preview" style={{
+                            marginTop: '10px',
+                            position: 'relative',
+                            width: '150px',
+                            height: '150px'
+                          }}>
+                            <img
+                              src={guestImagePreview || guestPicture}
+                              alt="Guest Preview"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                borderRadius: '8px'
+                              }}
+                            />
+                            <button
+                              onClick={() => {
+                                setGuestPicture('');
+                                setGuestImagePreview('');
+                              }}
+                              style={{
+                                position: 'absolute',
+                                top: '5px',
+                                right: '5px',
+                                background: 'rgba(255, 0, 0, 0.7)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '24px',
+                                height: '24px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <button onClick={handleAddGuest} disabled={!guestName || !guestPicture}>
+                      <button 
+                        onClick={handleAddGuest} 
+                        disabled={!guestName || !guestPicture}
+                        style={{
+                          padding: '8px',
+                          backgroundColor: (!guestName || !guestPicture) ? '#ccc' : '#4CAF50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: (!guestName || !guestPicture) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
                         Add Guest
                       </button>
                     </div>
@@ -863,15 +1159,35 @@ function EventDetailPage() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '10px',
-                        marginBottom: '10px'
+                        marginBottom: '10px',
+                        padding: '10px',
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: '8px'
                       }}>
                         <img 
                           src={guest.picture} 
                           alt={guest.name} 
-                          style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '50%' }}
+                          style={{ 
+                            width: '50px', 
+                            height: '50px', 
+                            objectFit: 'cover', 
+                            borderRadius: '50%' 
+                          }}
                         />
                         <span>{guest.name}</span>
-                        <button onClick={() => handleRemoveGuest(index)}>×</button>
+                        <button 
+                          onClick={() => handleRemoveGuest(index)}
+                          style={{
+                            marginLeft: 'auto',
+                            background: 'none',
+                            border: 'none',
+                            color: 'red',
+                            cursor: 'pointer',
+                            fontSize: '18px'
+                          }}
+                        >
+                          ×
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -882,49 +1198,84 @@ function EventDetailPage() {
                   <h3 className="panel-title">Event Images</h3>
                   <div className="form-group">
                     <label>Add Image</label>
-                    <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) handleImageUpload(file);
-                        }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Or enter image URL"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && e.target.value) {
-                            setEditedEvent(prev => ({
-                              ...prev,
-                              images: [...prev.images, e.target.value]
-                            }));
-                            e.target.value = '';
-                          }
-                        }}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <button 
+                        onClick={() => setIsLocalImage(!isLocalImage)}
                         style={{
-                          width: '100%',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          border: '1px solid #ddd'
-                        }}
-                      />
+                                padding: '8px',
+                                border: '1px solid #ddd',
+                                borderRadius: '4px',
+                                background: isLocalImage ? 'navy' : 'green',
+                                cursor: 'pointer',
+                                width: 'fit-content'
+                              }}
+                      >
+                        {isLocalImage ? 'Enter URL Instead' : 'Upload Image'}
+                      </button>
+
+                      <div className="image-inputs" style={{ display: 'flex', gap: '10px' }}>
+                        {isLocalImage ? (
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) handleImageUpload(file);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '8px',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px'
+                            }}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            placeholder="Image URL"
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const imageUrl = e.target.value;
+                                // Create new image to test URL
+                                const img = new Image();
+                                img.onload = () => {
+                                  setEditedEvent(prev => ({
+                                    ...prev,
+                                    images: [...prev.images, imageUrl]
+                                  }));
+                                  e.target.value = ''; // Clear input after adding
+                                };
+                                img.onerror = () => {
+                                  alert('Invalid image URL. Please try another URL.');
+                                };
+                                img.src = imageUrl;
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '8px',
+                              borderRadius: '4px',
+                              border: '1px solid #ddd'
+                            }}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
                   
-                  <div className="images-list" style={{
+                  <div className="images-grid" style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-                    gap: '10px',
-                    marginTop: '10px'
+                    gap: '15px',
+                    marginTop: '20px'
                   }}>
                     {editedEvent.images?.map((img, index) => (
                       <div key={index} className="image-item" style={{
                         position: 'relative',
                         aspectRatio: '1',
-                        borderRadius: '4px',
-                        overflow: 'hidden'
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        border: '1px solid #ddd'
                       }}>
                         <img 
                           src={img} 
@@ -950,7 +1301,8 @@ function EventDetailPage() {
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            fontSize: '16px'
                           }}
                         >
                           ×

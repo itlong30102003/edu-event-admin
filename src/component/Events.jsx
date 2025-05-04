@@ -534,6 +534,15 @@ function Events() {
                   ))}
                 </div>
               </div>
+              <input
+                type="text"
+                placeholder="Host"
+                value={newEvent.host}
+                onChange={(e) => setNewEvent({ ...newEvent, host: e.target.value })}
+              />
+              <div>
+
+              </div>
               <textarea
                 placeholder="About"
                 value={newEvent.about}

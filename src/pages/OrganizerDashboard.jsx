@@ -242,10 +242,10 @@ function OrganizerDashboard() {
               </div>
             )}
           </div>
-          <div className="header-search">
+          {/* <div className="header-search">
             <input type="text" placeholder="Search..." />
             <button className="search-button">🔍</button>
-          </div>
+          </div> */}
         </header>
 
         {/* Profile Modal */}
